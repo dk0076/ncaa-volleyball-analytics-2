@@ -1,10 +1,13 @@
-# This workflow uses actions that are not certified by GitHub.
-# They are provided by a third-party and are governed by
-# separate terms of service, privacy policy, and support
-# documentation.
+# Syntax-checks the committed R source.
 #
-# See https://github.com/r-lib/actions/tree/master/examples#readme for
-# additional example workflows available for the R community.
+# The pipeline itself cannot run in CI: the dataset is not in the repo (see
+# .gitignore), and script 01 pulls ~45-60 minutes of live NCAA play-by-play
+# data. So this verifies what can honestly be verified without the data —
+# that every script, the Shiny app, and every knitr chunk parses.
+#
+# This replaces GitHub's default R-package template, which assumed a
+# DESCRIPTION file and ran R CMD check. This repository is a script
+# collection, not an R package, so that template could never pass.
 
 name: R
 
@@ -18,23 +21,20 @@ permissions:
   contents: read
 
 jobs:
-  build:
-    runs-on: macos-latest
-    strategy:
-      matrix:
-        r-version: ['3.6.3', '4.1.1']
+  parse:
+    runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
-      - name: Set up R ${{ matrix.r-version }}
-        uses: r-lib/actions/setup-r@f57f1301a053485946083d7a45022b278929a78a
+
+      - uses: r-lib/actions/setup-r@v2
         with:
-          r-version: ${{ matrix.r-version }}
-      - name: Install dependencies
-        run: |
-          install.packages(c("remotes", "rcmdcheck"))
-          remotes::install_deps(dependencies = TRUE)
+          r-version: 'release'
+          use-public-rspm: true
+
+      - name: Install knitr
+        run: install.packages("knitr")
         shell: Rscript {0}
-      - name: Check
-        run: rcmdcheck::rcmdcheck(args = "--no-manual", error_on = "error")
-        shell: Rscript {0}
+
+      - name: Parse all R scripts, the Shiny app, and Rmd chunks
+        run: Rscript .github/scripts/parse-check.R
