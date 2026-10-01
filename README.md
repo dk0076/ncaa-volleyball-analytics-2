@@ -2,7 +2,7 @@
 
 An end-to-end sports analytics pipeline quantifying serve effectiveness across the Big West Conference using NCAA play-by-play data, XGBoost modeling, and an interactive R Shiny dashboard.
 
-**[Live dashboard](https://cdb6ar-andrew-king.shinyapps.io/big-west-serve-quality/)** | [Example scouting report](ncaa-volleyball-analytics-fixed/reports/scouting_UCSB.html)
+**[Live dashboard](https://cdb6ar-andrew-king.shinyapps.io/big-west-serve-quality/)** | [Example scouting report](https://htmlpreview.github.io/?https://github.com/dk0076/ncaa-volleyball-analytics-2/blob/main/ncaa-volleyball-analytics-fixed/reports/scouting_UCSB.html)
 
 ## Motivation
 

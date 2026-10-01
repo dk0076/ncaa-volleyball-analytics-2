@@ -147,7 +147,7 @@ kable(receiver_targets, booktabs = TRUE, linesep = "") %>%
 ## Their Serving Threats — Who to Watch
 
 Cal Poly's defensive preparation. Opponent servers ranked by Serve Quality Index (0–100, global scale).
-Minimum 50 serves.
+Minimum 50 serves. `P(FBK Against)` is conditional on the serve being in play.
 
 ```{r serving-threats}
 threats <- quality %>%
@@ -156,15 +156,19 @@ threats <- quality %>%
   summarise(
     Serves   = n(),
     Quality  = round(mean(quality_index)),
-    `P(Ace)` = round(mean(p_ace_oof), 3),
-    `P(Err)` = round(mean(p_error_oof), 3),
-    `P(FBK | In Play)` = round(mean(p_fbk_oof), 3),
+    # Column labels match the Shiny leaderboard — these are the same
+    # forward-chained OOF quantities. A "|" here renders as a literal &#124;
+    # once kable escapes it for HTML, so the conditioning bar is spelled out
+    # in the caption below instead of the header.
+    `P(Ace)`         = round(mean(p_ace_oof), 3),
+    `P(Error)`       = round(mean(p_error_oof), 3),
+    `P(FBK Against)` = round(mean(p_fbk_oof), 3),
     .groups  = "drop"
   ) %>%
   filter(Serves >= 50) %>%
   arrange(desc(Quality)) %>%
   mutate(Rank = row_number()) %>%
-  select(Rank, Player = player, Serves, Quality, `P(Ace)`, `P(Err)`, `P(FBK | In Play)`)
+  select(Rank, Player = player, Serves, Quality, `P(Ace)`, `P(Error)`, `P(FBK Against)`)
 
 kable(threats, booktabs = TRUE, linesep = "") %>%
   kable_styling(font_size = 10, full_width = FALSE, position = "left") %>%
