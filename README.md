@@ -291,6 +291,10 @@ Shrinkage tuned for stable estimation and shrinkage tuned for discriminative pow
 -   **Multinomial classifier** over {ace, error, in-play} would enforce the simplex constraint and remove the need to clamp `p_ace + p_error`; the current independent binary classifiers are not architecturally constrained to sum to <= 1
 -   **Reception quality grades** (if available via DataVolley/VolleyMetrics) would replace the binary FBK outcome with a continuous reception quality score
 
+## AI Assistance
+
+Parts of this project were developed with AI assistance (Claude, Anthropic), including debugging, code review, and documentation.
+
 ## Author
 
 Drew King, Statistics B.S., Cal Poly SLO | Sports Analytics | github.com/dk0076
