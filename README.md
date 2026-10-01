@@ -2,7 +2,7 @@
 
 An end-to-end sports analytics pipeline quantifying serve effectiveness across the Big West Conference using NCAA play-by-play data, XGBoost modeling, and an interactive R Shiny dashboard.
 
-**[Live dashboard](ADD_SHINYAPPS_URL)** | [Example scouting report](reports/scouting_UCSB.html)
+**[Live dashboard](https://cdb6ar-andrew-king.shinyapps.io/big-west-serve-quality/)** | [Example scouting report](reports/scouting_UCSB.html)
 
 ## Motivation
 
@@ -10,7 +10,19 @@ Pitch quality modeling in baseball, epitomized by Statcast-powered XGBoost pipel
 
 The core question: **what actually drives first-ball-kill outcomes, the server or the receiver?**
 
-**Short answer:** the receiver. Team-level receiving tendency is the strongest predictor of first-ball-kill outcomes by a wide margin, and server features contribute less than half the signal of receiver-side features. A server with good raw numbers may simply be targeting weak passers. The Serve Quality Index corrects for this.
+**Short answer:** the receiver, and mostly at the team level rather than the individual level. Team receiving tendency is the strongest single predictor of first-ball-kill outcomes, and server features contribute less than half the signal of receiver-side features. A server with good raw numbers may simply be targeting weak passers; the Serve Quality Index corrects for this.
+
+## Headline result, stated honestly
+
+**The models beat a predict-the-mean baseline, but not by much.** Chronological holdout AUC is 0.588 (ace), 0.606 (service error), and 0.564 (first-ball kill against). Logloss improvement over baseline on the FBK model is 0.0054.
+
+That is the finding, not a footnote to it. Serve outcomes are substantially determined by placement, pace, and the passer's starting position, and none of those are observable in NCAA play-by-play data. A pipeline built only on rate priors and game state should not predict individual serve outcomes well, and this one does not.
+
+What follows from that shapes the deliverable:
+
+-   **The Serve Quality Index is presented as a descriptive, receiver-adjusted summary of serves already taken**, not a forecast of the next serve. The leaderboard is the primary output.
+-   **Player-level serve targeting was removed.** An earlier version of the dashboard and the scouting report included a predicted server × receiver "matchup quality" matrix. At AUC 0.564 that matrix cannot support picking which opponent to serve; see [Limitations](#limitations-and-future-work) for the specific failure.
+-   **The modeling and validation code is unchanged** (`04_prior_features.R` through `06_validation.R`). The empirical Bayes shrinkage, forward-chained out-of-fold scoring, and chronological holdout are the substance of the project, and they are what produced a trustworthy null result rather than an inflated one.
 
 ## Data
 
@@ -35,7 +47,9 @@ Top SHAP features on the holdout set (mean |SHAP|, M3):
 | `receiver_prior_fbk_rate` (individual) | 0.020 |
 | `prior_fbk_rate` (server) | 0.009 |
 
-Team-level receiving tendency (`opp_prior_fbk_rate`) is the single strongest predictor. Individual receiver identity, once represented as a smoothed prior rate rather than an integer ID, contributes meaningful additional signal but is not dominant. Opponent team ace and error rates contribute at roughly equal magnitude to individual receiver rate, reflecting that team-level receiving quality is a stronger predictor than any single player's tendencies. Server features contribute less than half the signal of receiver-side features.
+Team-level receiving tendency (`opp_prior_fbk_rate`) is the single strongest predictor. Opponent team ace and error rates contribute at roughly equal magnitude to individual receiver rate, reflecting that team-level receiving quality is a stronger predictor than any single player's tendencies. Server features contribute less than half the signal of receiver-side features.
+
+**How much weight this ordering can carry.** These are relative attributions inside a model with holdout AUC 0.564, so the ordering is more trustworthy than the magnitudes, and the gap between adjacent features near the bottom of the table is not meaningful. The comparison worth making is the top of the table against the bottom: receiver-side features clearly outrank server-side ones. The comparison *not* worth making is `receiver_prior_fbk_rate` (0.020) against `opp_prior_ace_rate` (0.021). The 87,219-serve sample makes the broad ordering stable; it does not make a near-chance model precise.
 
 **What this means:** FBK outcomes are primarily determined by who receives the serve, not who serves it. A server whose opponents concede high FBK rates may be benefiting from targeting weak passers rather than generating serves that are inherently difficult to handle.
 
@@ -85,7 +99,7 @@ This also mirrors a known ceiling in outcome-based sports modeling: without spat
 
 -   **FBK Rate (receivers)** fraction of receptions resulting in FBK against the server; lower = weaker passer = serve target
 -   **Serve Quality Index (servers)** average predicted serve quality across all forward-chained out-of-fold serves, min-max scaled to 0-100 (the leaderboard excludes the first chronological block, which has no out-of-fold predictions)
--   **Matchup Quality** serve quality predicted for a specific server x receiver pairing at neutral game state (Set 2, tied score, away)
+Receiver FBK rates in the scouting report are observed season rates, not model output. The report gates on M3 holdout AUC and falls back to raw rates below 0.60, which with the published AUC of 0.564 means it always shows observed rates.
 
 ## Methodology
 
@@ -193,9 +207,9 @@ scripts/
   05_model.R               # XGBoost training, CV tuning, leaderboard, model artifacts
   06_validation.R          # Chronological holdout validation + SHAP feature importance
 shiny_app/
-  app.R                    # Interactive serve quality dashboard
+  app.R                    # Interactive serve quality dashboard (presentation only, no runtime scoring)
 reports/
-  scouting_report.Rmd      # Parameterized pre-match scouting report
+  scouting_report.Rmd      # Parameterized pre-match scouting report (descriptive rates)
   scouting_UCSB.html       # Committed example of a rendered report
 data/                      # Not tracked in git, generated by scripts
   volleyball.duckdb        # Raw PBP data
@@ -255,13 +269,23 @@ sort(unique(c(serves$serve_team, serves$opp_team)))
 shiny::runApp("shiny_app")
 ```
 
-The app defaults to Cal Poly. Use the team dropdown to view any team or select "All Teams" for the full leaderboard. The Scouting Matchup tab loads model data on first access.
+The app defaults to Cal Poly. Use the team dropdown to view any team or select "All Teams" for the full leaderboard. The app loads only `serve_quality.rds` and scores nothing at runtime, so every number it displays is traceable to `05_model.R`.
+
+`app.R` resolves its data directory at startup by checking `shiny_app/data/` first, then `data/` at the project root. The pipeline scripts write to the project root; a deployed shinyapps.io bundle carries its own copy inside `shiny_app/` because there is no `.Rproj` in the bundle for `here()` to anchor to. Either layout works, and a missing dataset produces an explicit error naming both paths it searched.
 
 ## Limitations and Future Work
 
+**Why the server × receiver matchup matrix was removed.** The dashboard and scouting report previously rendered a predicted quality score for every Cal Poly server against every opponent receiver. The matrix turned out to be nearly constant across receivers, and tracing why is the most instructive result in the project:
+
+1.  `receiver_prior_fbk_rate` is a Beta-Binomial posterior mean with `k = 50` pseudo-observations pulling toward the league mean. Receivers in a single-season dataset have 6-30 prior receptions, so the feature is 76-100% league mean by construction. Against Arkansas, the four qualifying receivers landed at 0.323, 0.355, 0.362, and 0.365, where 0.362 is the league mean exactly, because that receiver had no prior history at all.
+2.  That 0.042-wide spread falls inside a single flat region of M3's piecewise-constant response, so three of the four receivers produce an identical `p_fbk`. Sweeping the feature across its full observed range (0.248-0.501) moves the 0-100 quality index by only about 3 points.
+3.  The shrinkage is doing exactly what it should. `k = 50` is the right answer to "how much should I trust 15 receptions," and the honest consequence is that this feature cannot discriminate individuals at this sample size. The fix is more data, not a smaller `k`.
+
+Shrinkage tuned for stable estimation and shrinkage tuned for discriminative power are in tension, and at one season of play-by-play the estimation side has to win. Lowering `k` would have produced a matrix that varied visibly and meant nothing.
+
 -   **Tracking data** (serve location, type, speed) is the primary bottleneck; the model cannot separate server mechanics from receiver weakness without it
 -   **Receiver targeting** identifying which player a server is targeting, rather than just who received, would add a strategic layer currently invisible in PBP data
--   **Multiple seasons** would stabilize ratings for low-volume players and enable year-over-year tracking
+-   **Multiple seasons** would stabilize ratings for low-volume players and enable year-over-year tracking; this is also the precondition for restoring any player-level matchup output
 -   **Multinomial classifier** over {ace, error, in-play} would enforce the simplex constraint and remove the need to clamp `p_ace + p_error`; the current independent binary classifiers are not architecturally constrained to sum to <= 1
 -   **Reception quality grades** (if available via DataVolley/VolleyMetrics) would replace the binary FBK outcome with a continuous reception quality score
 

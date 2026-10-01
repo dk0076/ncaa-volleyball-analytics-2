@@ -17,11 +17,9 @@ library(tidyr)
 library(ggplot2)
 library(knitr)
 library(kableExtra)
-library(xgboost)
 
 serves    <- readRDS("../data/serves_featured.rds")
 quality   <- readRDS("../data/serve_quality.rds")
-artifacts <- readRDS("../data/models.rds")
 val_metrics <- if (file.exists("../data/validation_metrics.rds")) {
   readRDS("../data/validation_metrics.rds")
 } else list(auc = "N/A")
@@ -171,157 +169,11 @@ if (length(dual_role) > 0) {
 
 ---
 
-## Cal Poly Serve Matchup
-
-Predicted serve quality for each Cal Poly server against each `r opponent` receiver.
-Higher = more favorable matchup for the server. Primary receiver targets highlighted.
-
-```{r matchup-matrix}
-# Cal Poly servers with enough volume
-cp_servers <- quality %>%
-  filter(serve_team == cal_poly) %>%
-  group_by(player) %>%
-  summarise(n = n(), .groups = "drop") %>%
-  filter(n >= 20) %>%
-  pull(player)
-
-# Opponent receivers with enough receptions
-opp_receivers <- serves %>%
-  filter(in_play == 1, opp_team == opponent, !is.na(receiver)) %>%
-  group_by(receiver) %>%
-  summarise(n = n(), .groups = "drop") %>%
-  filter(n >= 20) %>%
-  pull(receiver)
-
-if (length(cp_servers) == 0 || length(opp_receivers) == 0) {
-  cat("Not enough data to generate matchup matrix.")
-} else {
-  # Build all server × receiver combinations
-  matchups <- expand.grid(
-    player   = cp_servers,
-    receiver = opp_receivers,
-    stringsAsFactors = FALSE
-  )
-
-  mean_fbk   <- mean(serves$fbk_against[serves$in_play == 1], na.rm = TRUE)
-  mean_ace   <- mean(serves$ace,           na.rm = TRUE)
-  mean_error <- mean(serves$service_error, na.rm = TRUE)
-
-  opp_rate_row <- latest_opp_rates %>% filter(opp_team == opponent)
-
-  # Attach latest prior rates
-  matchups <- matchups %>%
-    left_join(latest_server_rates %>% filter(serve_team == cal_poly),
-              by = "player") %>%
-    left_join(latest_receiver_rates %>% filter(opp_team == opponent),
-              by = "receiver") %>%
-    mutate(
-      # Neutral game state
-      set_num     = 2L,
-      score_diff  = 0L,
-      is_home     = 0L,
-      is_late_set = 0L,
-      # Opponent rates: use latest prior; fall back to global mean
-      opp_prior_fbk_rate   = if (nrow(opp_rate_row) == 1) opp_rate_row$opp_prior_fbk_rate   else mean_fbk,
-      opp_prior_ace_rate   = if (nrow(opp_rate_row) == 1) opp_rate_row$opp_prior_ace_rate   else mean_ace,
-      opp_prior_error_rate = if (nrow(opp_rate_row) == 1) opp_rate_row$opp_prior_error_rate else mean_error
-    ) %>%
-    mutate(
-      prior_ace_rate          = coalesce(prior_ace_rate,          mean_ace),
-      prior_error_rate        = coalesce(prior_error_rate,        mean_error),
-      prior_fbk_rate          = coalesce(prior_fbk_rate,          mean_fbk),
-      receiver_prior_fbk_rate = coalesce(receiver_prior_fbk_rate, mean_fbk),
-      match_ace_rate          = coalesce(match_ace_rate,          mean_ace),
-      match_error_rate        = coalesce(match_error_rate,        mean_error)
-    )
-
-  features_fbk  <- artifacts$features_fbk
-  features_base <- artifacts$features_base
-
-  X_base <- as.matrix(matchups[, features_base])
-  X_fbk  <- as.matrix(matchups[, features_fbk])
-
-  matchups$p_ace     <- predict(artifacts$m1, xgb.DMatrix(X_base))
-  matchups$p_error   <- predict(artifacts$m2, xgb.DMatrix(X_base))
-  matchups$p_fbk     <- predict(artifacts$m3, xgb.DMatrix(X_fbk))
-  matchups$p_in_play <- pmax(0, 1 - matchups$p_ace - matchups$p_error)
-  quality_raw        <- matchups$p_ace - matchups$p_error - matchups$p_in_play * matchups$p_fbk
-  matchups$quality   <- pmax(0L, pmin(100L, as.integer(round(
-    100 * (quality_raw - artifacts$quality_min) / (artifacts$quality_max - artifacts$quality_min)
-  ))))
-
-  # Pivot to wide matrix
-  matrix_wide <- matchups %>%
-    select(Player = player, receiver, quality) %>%
-    tidyr::pivot_wider(names_from = receiver, values_from = quality)
-
-  # Highlight primary targets (top 33% receivers by FBK rate)
-  primary_targets <- receiver_targets %>%
-    filter(Recommendation == "Primary Target") %>%
-    pull(Player)
-
-  tbl <- kable(matrix_wide, booktabs = TRUE, linesep = "",
-               caption = "Predicted Serve Quality by Matchup") %>%
-    kable_styling(font_size = 9, full_width = TRUE)
-
-  for (col in intersect(primary_targets, colnames(matrix_wide)[-1])) {
-    tbl <- tbl %>%
-      column_spec(which(colnames(matrix_wide) == col),
-                  bold = TRUE, color = cp_green)
-  }
-  tbl
-}
-```
-
----
-
-## Top Recommendations
-
-```{r recommendations}
-if (length(cp_servers) > 0 && length(opp_receivers) > 0) {
-  # One best receiver per server, then rank across servers — prevents one server
-  # monopolising all recommendations.
-  top3 <- matchups %>%
-    group_by(player) %>%
-    slice_max(quality, n = 1, with_ties = FALSE) %>%
-    ungroup() %>%
-    arrange(desc(quality)) %>%
-    slice_head(n = 3) %>%
-    mutate(
-      Rank            = row_number(),
-      `Quality (0-100)` = quality,
-      `P(Ace)`        = round(p_ace, 3),
-      `P(FBK | In Play)` = round(p_fbk, 3)
-    ) %>%
-    select(Rank,
-           `Cal Poly Server` = player,
-           `Target Receiver` = receiver,
-           `Quality (0-100)`,
-           `P(Ace)`,
-           `P(FBK | In Play)`)
-
-  kable(top3, booktabs = TRUE, linesep = "") %>%
-    kable_styling(font_size = 10, full_width = FALSE, position = "left") %>%
-    row_spec(1, bold = TRUE, color = "white", background = cp_green)
-}
-```
-
-\vspace{6pt}
-
-```{r recommendation-text, results='asis'}
-if (length(cp_servers) > 0 && length(opp_receivers) > 0 && nrow(top3) > 0) {
-  best <- top3[1, ]
-  cat(paste0(
-    "**Primary recommendation:** ", best$`Cal Poly Server`,
-    " serving to ", best$`Target Receiver`,
-    " (quality index: ", best$`Quality (0-100)`, "/100, P(FBK | In Play) = ", best$`P(FBK | In Play)`, ")."
-  ))
-}
-```
-
 \vspace{12pt}
 \footnotesize
-*Quality Index (0–100) = P(Ace) - P(Error) - P(In Play) × P(FBK Against | In Play), min-max scaled across all
-forward-chained out-of-fold 2025 season serves (date blocks 2–5). Higher = better for the server. M3 holdout AUC = `r val_metrics$auc`
-(train-only refit on first `r val_metrics$n_train` serves; deployed model trained on full season).
-Game state set to neutral (Set 2, tied score, away).*
+*Receiver FBK rates above are observed 2025 season rates, not model predictions.
+This report deliberately stops at the descriptive level. An earlier version included a
+predicted server x receiver "matchup quality" matrix; it was removed because M3
+(P(FBK Against)) has a chronological holdout AUC of `r val_metrics$auc`, which is too
+close to chance to support player-level serve targeting. See the Limitations section of
+the project README.*

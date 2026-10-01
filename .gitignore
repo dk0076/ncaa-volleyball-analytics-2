@@ -1,0 +1,17 @@
+# Generated datasets — rebuilt by scripts/01-05, or downloaded from the
+# release snapshot. See README > Reproducing the Data.
+# These are still required locally for a shinyapps.io deploy; rsconnect
+# bundles from the working tree, not from git.
+data/
+*.duckdb
+*.duckdb.wal
+
+# R
+.Rproj.user/
+.Rhistory
+.RData
+.Ruserdata
+renv/library/
+
+# Tooling
+.claude/
