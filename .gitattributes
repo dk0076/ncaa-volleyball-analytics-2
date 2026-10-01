@@ -1,0 +1,5 @@
+# The committed scouting report is a rendered build artifact, not source.
+# At 637 KB it is ~93% of the repository by bytes, so without this GitHub's
+# linguist labels an R project as "HTML". Marking it as documentation keeps
+# it in the repo and served by Pages, but out of the language statistics.
+ncaa-volleyball-analytics-fixed/reports/*.html linguist-documentation
