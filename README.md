@@ -2,7 +2,7 @@
 
 An end-to-end sports analytics pipeline quantifying serve effectiveness across the Big West Conference using NCAA play-by-play data, XGBoost modeling, and an interactive R Shiny dashboard.
 
-**[Live dashboard](https://cdb6ar-andrew-king.shinyapps.io/big-west-serve-quality/)** | [Example scouting report](reports/scouting_UCSB.html)
+**[Live dashboard](https://cdb6ar-andrew-king.shinyapps.io/big-west-serve-quality/)** | [Example scouting report](ncaa-volleyball-analytics-fixed/reports/scouting_UCSB.html)
 
 ## Motivation
 
@@ -244,7 +244,7 @@ source("scripts/06_validation.R")
 
 Script 01 builds the contest list automatically from all team schedules via `ncaavolleyballr`. Skip it if `data/volleyball.duckdb` already exists. Script 02 is optional exploratory SQL and is not part of the pipeline.
 
-**Archived data (recommended for exact reproduction):** the raw NCAA play-by-play data is public, but the live pull takes 45 to 60 minutes and the upstream site can change. A snapshot of `volleyball.duckdb` and `big_west_contests.rds` as pulled for the published results is attached to the v1.1 GitHub release. Download both into `data/` and start from script 03.
+**On exact reproduction:** the raw NCAA play-by-play data is public, but the live pull takes 45 to 60 minutes and the upstream site can change, so a re-pull today may not reproduce the published numbers exactly. A snapshot of `volleyball.duckdb` and `big_west_contests.rds` as pulled for these results has not yet been attached to a GitHub release; until it is, script 01 is the only path to the raw data.
 
 **3. Generate a scouting report**
 
