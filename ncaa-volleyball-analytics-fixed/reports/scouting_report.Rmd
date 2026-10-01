@@ -18,10 +18,27 @@ library(ggplot2)
 library(knitr)
 library(kableExtra)
 
-serves    <- readRDS("../data/serves_featured.rds")
-quality   <- readRDS("../data/serve_quality.rds")
-val_metrics <- if (file.exists("../data/validation_metrics.rds")) {
-  readRDS("../data/validation_metrics.rds")
+# Resolve the data directory, matching the lookup in shiny_app/app.R: `data/`
+# sits at the project root, but a deployed Shiny bundle keeps its own copy under
+# shiny_app/. Check both so the report renders against either layout.
+data_dir <- local({
+  candidates <- c("../data", "../shiny_app/data")
+  found <- candidates[file.exists(file.path(candidates, "serve_quality.rds"))]
+  if (!length(found)) {
+    stop("Could not find serve_quality.rds. Looked in: ",
+         paste(normalizePath(candidates, mustWork = FALSE), collapse = ", "),
+         ". See README > Reproducing the Data.")
+  }
+  found[1]
+})
+
+# serve_quality.rds is a superset of serves_featured.rds — it carries every
+# feature column plus the OOF predictions and quality_index — so one file backs
+# both the descriptive rate tables and the quality leaderboard.
+serves    <- readRDS(file.path(data_dir, "serve_quality.rds"))
+quality   <- serves
+val_metrics <- if (file.exists(file.path(data_dir, "validation_metrics.rds"))) {
+  readRDS(file.path(data_dir, "validation_metrics.rds"))
 } else list(auc = "N/A")
 
 opponent  <- params$opponent
@@ -43,7 +60,7 @@ if (!opponent %in% all_teams) {
 # Most recent prior rates per player (from their last recorded contest).
 # Ordered by date_parsed rather than contestid — NCAA IDs are assigned
 # sequentially but monotonicity is not guaranteed by the API contract.
-contest_dates <- readRDS("../data/big_west_contests.rds") %>%
+contest_dates <- readRDS(file.path(data_dir, "big_west_contests.rds")) %>%
   mutate(date_parsed = as.Date(date, "%m/%d/%Y")) %>%
   select(contestid = contest, date_parsed)
 
